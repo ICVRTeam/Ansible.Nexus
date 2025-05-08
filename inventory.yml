@@ -1,0 +1,4 @@
+nexus_servers:
+  hosts:
+    localhost:
+      ansible_connection: local

@@ -1,0 +1,239 @@
+---
+- name: Install Nexus Repository Manager
+  hosts: nexus_servers
+  become: yes
+  vars:
+    nexus_version: "3.74.0-05"
+    nexus_download_url: "https://pkg.ictools.io/repository/dst-apps-test/nexus/nexus-{{ nexus_version }}-unix.tar.gz"
+    nexus_download_username: ""
+    nexus_download_password: ""
+    
+    nexus_base_dir: "/opt"
+    nexus_version_dir: "{{ nexus_base_dir }}/nexus-{{ nexus_version }}"
+    nexus_link_dir: "{{ nexus_base_dir }}/nexus"
+    nexus_data_dir: "{{ nexus_base_dir }}/sonatype-work"
+    nexus_logs_dir: "/var/log/nexus3"
+    
+    nexus_user: "nexus"
+    
+    debian_java_package: "openjdk-8-jdk"
+    redhat_java_package: "java-1.8.0-openjdk"
+    
+    nexus_upgrade: false
+    nexus_keep_old_versions: true
+    nexus_old_version_max: 2
+    
+  tasks:
+    # Install packages
+    - name: Update apt packages (Debian/Ubuntu)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+      
+    - name: Install Java (Debian/Ubuntu)
+      apt:
+        name: "{{ debian_java_package }}"
+        state: present
+      when: ansible_os_family == "Debian"
+      
+    - name: Update yum packages (RedHat/CentOS)
+      yum:
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+      
+    - name: Install Java (RedHat/CentOS)
+      yum:
+        name: "{{ redhat_java_package }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+      
+    - name: Create Nexus user
+      user:
+        name: "{{ nexus_user }}"
+        shell: /bin/bash
+        system: yes
+        home: "{{ nexus_link_dir }}"
+        create_home: no
+        
+    - name: Grant Nexus user sudo privileges (optional)
+      copy:
+        content: "{{ nexus_user }} ALL=(ALL) NOPASSWD: ALL"
+        dest: "/etc/sudoers.d/{{ nexus_user }}"
+        mode: 0440
+        
+    # Prepare and check installtion
+    - name: Check if Nexus is already installed
+      stat:
+        path: "{{ nexus_version_dir }}"
+      register: nexus_install_dir
+      
+    - name: Check which version is currently active (if any)
+      stat:
+        path: "{{ nexus_link_dir }}"
+      register: nexus_symlink
+      
+    - name: Read symlink target (if exists)
+      command: readlink -f {{ nexus_link_dir }}
+      register: current_version_dir
+      changed_when: false
+      failed_when: false
+      when: nexus_symlink.stat.exists and nexus_symlink.stat.islnk
+      
+    - name: Set current version fact
+      set_fact:
+        current_version: "{{ current_version_dir.stdout.split('/')[-1].replace('nexus-', '') if (nexus_symlink.stat.exists and nexus_symlink.stat.islnk) else 'none' }}"
+      
+    - name: Display current Nexus version
+      debug:
+        msg: "Current Nexus version: {{ current_version }}, Requested version: {{ nexus_version }}"
+        
+    # Check if we need to install or upgrade
+    - name: Check if we need to install or upgrade
+      set_fact:
+        do_install: "{{ not nexus_install_dir.stat.exists or nexus_upgrade | bool }}"
+
+    # Set new version
+    - name: Create version-specific Nexus directory
+      file:
+        path: "{{ nexus_version_dir }}"
+        state: directory
+        owner: "{{ nexus_user }}"
+        group: "{{ nexus_user }}"
+        mode: 0755
+      when: do_install | bool
+      
+    - name: Download Nexus package
+      get_url:
+        url: "{{ nexus_download_url }}"
+        dest: "/tmp/nexus-{{ nexus_version }}-unix.tar.gz"
+        url_username: "{{ nexus_download_username | default(omit) }}" 
+        url_password: "{{ nexus_download_password | default(omit) }}"
+        force: no
+        mode: 0644
+        timeout: 300
+      when: do_install | bool
+        
+    - name: Extract Nexus package
+      unarchive:
+        src: "/tmp/nexus-{{ nexus_version }}-unix.tar.gz"
+        dest: "{{ nexus_version_dir }}"
+        extra_opts: "--strip-components=1"
+        remote_src: yes
+        creates: "{{ nexus_version_dir }}/bin/nexus"
+      when: do_install | bool
+        
+    - name: Create logs directory
+      file:
+        path: "{{ nexus_logs_dir }}"
+        state: directory
+        owner: "{{ nexus_user }}"
+        group: "{{ nexus_user }}"
+        mode: 0755
+      when: do_install | bool
+        
+    - name: Create data directory
+      file:
+        path: "{{ nexus_data_dir }}"
+        state: directory
+        owner: "{{ nexus_user }}"
+        group: "{{ nexus_user }}"
+        mode: 0755
+      when: do_install | bool
+        
+    - name: Set Nexus directory ownership
+      file:
+        path: "{{ nexus_version_dir }}"
+        state: directory
+        owner: "{{ nexus_user }}"
+        group: "{{ nexus_user }}"
+        recurse: yes
+      when: do_install | bool
+      
+    # Create or update symbolic link
+    - name: Stop Nexus service if upgrading
+      systemd:
+        name: nexus
+        state: stopped
+      when: do_install | bool and nexus_symlink.stat.exists
+      ignore_errors: yes
+        
+    - name: Create or update symbolic link
+      file:
+        src: "{{ nexus_version_dir }}"
+        dest: "{{ nexus_link_dir }}"
+        state: link
+        owner: "{{ nexus_user }}"
+        group: "{{ nexus_user }}"
+      when: do_install | bool
+      
+    # Remove old installations
+    - name: Find old Nexus installations
+      find:
+        paths: "{{ nexus_base_dir }}"
+        patterns: "nexus-*"
+        file_type: directory
+      register: old_nexus_installs
+      when: nexus_keep_old_versions | bool and do_install | bool
+      
+    - name: Sort old installations by modification time
+      set_fact:
+        sorted_installs: "{{ old_nexus_installs.files | sort(attribute='mtime') }}"
+      when: nexus_keep_old_versions | bool and do_install | bool and old_nexus_installs.files | length > nexus_old_version_max
+      
+    - name: Remove excess old installations
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ sorted_installs[0:(sorted_installs | length - nexus_old_version_max)] }}"
+      when: nexus_keep_old_versions | bool and do_install | bool and old_nexus_installs.files | length > nexus_old_version_max
+        
+    - name: Configure JVM options
+      template:
+        src: nexus.vmoptions.j2
+        dest: "{{ nexus_link_dir }}/bin/nexus.vmoptions"
+        owner: "{{ nexus_user }}"
+        group: "{{ nexus_user }}"
+        mode: 0644
+      notify: restart nexus
+      when: do_install | bool
+        
+    - name: Create Nexus systemd service
+      template:
+        src: nexus.service.j2
+        dest: /etc/systemd/system/nexus.service
+        owner: root
+        group: root
+        mode: 0644
+      notify: restart nexus
+      
+    - name: Enable and start Nexus service
+      systemd:
+        name: nexus
+        daemon_reload: yes
+        enabled: yes
+        state: started
+        
+    - name: Wait for Nexus to start
+      wait_for:
+        port: 8081
+        delay: 10
+        timeout: 300
+        
+    - name: Get initial admin password
+      shell: cat {{ nexus_data_dir }}/nexus3/admin.password
+      register: admin_password
+      become_user: "{{ nexus_user }}"
+      changed_when: false
+      ignore_errors: true
+        
+    - name: Print admin password
+      debug:
+        msg: "Initial admin password: {{ admin_password.stdout }}"
+      when: admin_password.rc == 0
+      
+  handlers:
+    - name: restart nexus
+      systemd:
+        name: nexus
+        state: restarted

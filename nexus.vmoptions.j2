@@ -1,0 +1,15 @@
+-Xms2703m
+-Xmx2703m
+-XX:MaxDirectMemorySize=2703m
+-XX:+UnlockDiagnosticVMOptions
+-XX:+LogVMOutput
+-XX:LogFile={{ nexus_logs_dir }}/jvm.log
+-XX:-OmitStackTraceInFastThrow
+-Djava.net.preferIPv4Stack=true
+-Dkaraf.home=.
+-Dkaraf.base=.
+-Dkaraf.etc=etc/karaf
+-Djava.util.logging.config.file=etc/karaf/java.util.logging.properties
+-Dkaraf.data={{ nexus_data_dir }}/nexus3
+-Dkaraf.log={{ nexus_logs_dir }}
+-Djava.io.tmpdir={{ nexus_data_dir }}/nexus3/tmp
