@@ -48,12 +48,26 @@
         state: present
       when: ansible_os_family == "RedHat"
       
+    # - name: Create Nexus user
+    #   user:
+    #     name: "{{ nexus_user }}"
+    #     shell: /bin/bash
+    #     system: yes
+    #     home: "{{ nexus_base_dir }}"
+    #     create_home: no
+
+    - name: Create group for Nexus
+      group:
+        name: "{{ nexus_user }}"
+        system: yes
+
     - name: Create Nexus user
       user:
         name: "{{ nexus_user }}"
         shell: /bin/bash
+        group: "{{ nexus_user }}"
         system: yes
-        home: "{{ nexus_link_dir }}"
+        home: "{{ nexus_base_dir }}"
         create_home: no
         
     # - name: Grant Nexus user sudo privileges (optional)
