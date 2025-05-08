@@ -69,7 +69,15 @@
         system: yes
         home: "{{ nexus_base_dir }}"
         create_home: no
-        
+
+    - name: "Set permissions for Nexus user's home directory"
+      ansible.builtin.file:
+        path: "{{ nexus_base_dir }}"
+        owner: "{{ nexus_user }}"
+        group: "{{ nexus_user }}"
+        mode: '0755'
+      become: yes
+
     # - name: Grant Nexus user sudo privileges (optional)
     #   copy:
     #     content: "{{ nexus_user }} ALL=(ALL) NOPASSWD: ALL"
