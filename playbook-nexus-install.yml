@@ -3,8 +3,9 @@
   hosts: localhost
   become: yes
   vars:
-    nexus_version: "3.80.0-06"
-    nexus_download_url: "https://pkg.ictools.io/repository/dst-apps-test/nexus/nexus-{{ nexus_version }}-linux-x86_64.tar.gz" 
+    nexus_version: "3.76.1-01"
+    # nexus_download_url: "https://pkg.ictools.io/repository/dst-apps-test/nexus/nexus-{{ nexus_version }}-linux-x86_64.tar.gz" 
+    nexus_download_url: "https://pkg.ictools.io/repository/temp-bin/nexus/nexus-{{ nexus_version }}-unix.tar.gz"
     nexus_download_username: ""
     nexus_download_password: ""
     
@@ -12,12 +13,12 @@
     nexus_version_dir: "{{ nexus_base_dir }}/nexus-{{ nexus_version }}"
     nexus_link_dir: "{{ nexus_base_dir }}/nexus"
     nexus_data_dir: "{{ nexus_base_dir }}/sonatype-work"
-    nexus_logs_dir: "/var/log/nexus3"
+    nexus_logs_dir: "{{ nexus_base_dir }}/sonatype-work/nexus3/log"
     
     nexus_user: "nexus"
     
-    debian_java_package: "openjdk-8-jdk"
-    redhat_java_package: "java-1.8.0-openjdk"
+    debian_java_package: "openjdk-17-jdk"
+    redhat_java_package: "java-17-openjdk"
     
     nexus_upgrade: false
     nexus_keep_old_versions: true
@@ -47,14 +48,6 @@
         name: "{{ redhat_java_package }}"
         state: present
       when: ansible_os_family == "RedHat"
-      
-    # - name: Create Nexus user
-    #   user:
-    #     name: "{{ nexus_user }}"
-    #     shell: /bin/bash
-    #     system: yes
-    #     home: "{{ nexus_base_dir }}"
-    #     create_home: no
 
     - name: Create group for Nexus
       group:
@@ -77,70 +70,6 @@
         group: "{{ nexus_user }}"
         mode: '0755'
       become: yes
-
-    # - name: Grant Nexus user sudo privileges (optional)
-    #   copy:
-    #     content: "{{ nexus_user }} ALL=(ALL) NOPASSWD: ALL"
-    #     dest: "/etc/sudoers.d/{{ nexus_user }}"
-    #     mode: 0440
-
-    # - name: Nginx Installation on Debian
-    #   when: ansible_facts['os_family'] != 'RedHat'
-    #   block: 
-    #     - name: "Set facts for Nginx official repo"
-    #       ansible.builtin.set_fact:
-    #         nginx_repo_url: >
-    #           {% if ansible_distribution == 'Debian' %}
-    #             deb http://nginx.org/packages/debian {{ (ansible_distribution_release|lower) }} nginx
-    #           {% elif ansible_distribution == 'Ubuntu' %}
-    #             deb http://nginx.org/packages/ubuntu {{ (ansible_distribution_release|lower) }} nginx
-    #           {% else %}
-    #             deb http://nginx.org/packages/{{ ansible_distribution|lower }} {{ (ansible_distribution_release|lower) }} nginx
-    #           {% endif %}
-
-    #     - name: "Add Nginx signing key"
-    #       ansible.builtin.apt_key:
-    #         url: "http://nginx.org/keys/nginx_signing.key"
-    #         state: present
-
-    #     - name: "Add official Nginx repo"
-    #       ansible.builtin.apt_repository:
-    #         repo: "{{ nginx_repo_url }}"
-    #         state: present
-    #         filename: "nginx-official"
-
-    #     - name: "Update apt cache after adding Nginx repo"
-    #       ansible.builtin.apt:
-    #         update_cache: yes
-    #       when: ansible_os_family == 'Debian'
-
-    #     - name: "Install Nginx from official repo"
-    #       ansible.builtin.package:
-    #         name: nginx
-    #         state: present
-
-    # - name: Nginx Installation on RedHat
-    #   when: ansible_facts['os_family'] == 'RedHat'
-    #   block:
-    #     - name: "Add official Nginx repository"
-    #       ansible.builtin.yum_repository:
-    #         name: nginx
-    #         description: Official Nginx Repository
-    #         baseurl: >
-    #           {% if ansible_distribution == 'CentOS' %}
-    #             http://nginx.org/packages/centos/{{ ansible_distribution_major_version }}/$basearch/
-    #           {% else %}
-    #             http://nginx.org/packages/rhel/{{ ansible_distribution_major_version }}/$basearch/
-    #           {% endif %}
-    #         gpgcheck: yes
-    #         enabled: yes
-    #         gpgkey: http://nginx.org/keys/nginx_signing.key
-    #         module_hotfixes: true
-
-    #     - name: "Install Nginx from official repo"
-    #       ansible.builtin.package:
-    #         name: nginx
-    #         state: present
 
     # Prepare and check installtion
     - name: Check if Nexus is already installed
@@ -196,7 +125,7 @@
         
     - name: Extract Nexus package
       unarchive:
-        src: "/tmp/nexus-{{ nexus_version }}-linux-x86_64.tar.gz"
+        src: "/tmp/nexus-{{ nexus_version }}-unix.tar.gz"
         dest: "{{ nexus_version_dir }}"
         extra_opts: "--strip-components=1"
         remote_src: yes
