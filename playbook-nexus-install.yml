@@ -228,14 +228,20 @@
         port: 8081
         delay: 10
         timeout: 300
-        
+
+    - name: Check if admin password file exists
+      stat:
+        path: "{{ nexus_data_dir }}/nexus3/admin.password"
+      register: admin_password_file
+
     - name: Get initial admin password
       shell: cat {{ nexus_data_dir }}/nexus3/admin.password
       register: admin_password
       become_user: "{{ nexus_user }}"
       changed_when: false
+      when: admin_password_file.stat.exists
       ignore_errors: true
-        
+
     - name: Print admin password
       debug:
         msg: "Initial admin password: {{ admin_password.stdout }}"
